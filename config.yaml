@@ -1,0 +1,14 @@
+server:
+  addr: ":8081"
+  read_timeout: 10s
+  write_timeout: 10s
+  shutdown_timeout: 20s
+
+routes:
+  - path_prefix: "/users"
+    strategy: round_robin
+    upstreams:
+      - url: "http://localhost:9001"
+        weight: 1
+      - url: "http://localhost:9002"
+        weight: 1
