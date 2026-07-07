@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -62,5 +63,11 @@ func NewRouteHandler(route *config.Route) (http.Handler, error) {
 		},
 	}
 
-	return proxy, nil
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), route.Timeout)
+
+		defer cancel()
+
+		proxy.ServeHTTP(w, r.WithContext(ctx))
+	}), nil
 }
