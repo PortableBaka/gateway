@@ -33,6 +33,7 @@ const (
 const (
 	DefaultAddr            = ":8080"
 	DefaultReadTimeout     = 10 * time.Second
+	DefaultRouteTimeout    = 10 * time.Second
 	DefaultWriteTimeout    = 10 * time.Second
 	DefaultShutdownTimeout = 15 * time.Second
 )
@@ -48,9 +49,10 @@ type Server struct {
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 }
 type Route struct {
-	PathPrefix string     `yaml:"path_prefix"`
-	Strategy   string     `yaml:"strategy"`
-	Upstreams  []Upstream `yaml:"upstreams"`
+	PathPrefix string        `yaml:"path_prefix"`
+	Strategy   string        `yaml:"strategy"`
+	Timeout    time.Duration `yaml:"timeout"`
+	Upstreams  []Upstream    `yaml:"upstreams"`
 }
 type Upstream struct {
 	URL    string `yaml:"url"`
@@ -101,6 +103,9 @@ func LoadConfig(path string) (*Config, error) {
 		// Default + validate the strategy.
 		if route.Strategy == "" {
 			route.Strategy = RoundRobin
+		}
+		if route.Timeout <= 0 {
+			route.Timeout = DefaultRouteTimeout
 		}
 		if !validStrategies[route.Strategy] {
 			return nil, fmt.Errorf("route %d (%s): unknown strategy %q", i, route.PathPrefix, route.Strategy)

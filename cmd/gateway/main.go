@@ -46,7 +46,7 @@ func main() {
 	// gets one consistent request-ID and one log line regardless of which
 	// handler is hit. RequestIDMiddleware runs first so the ID it stashes in
 	// the request context is there by the time LogMiddleware reads it back.
-	handler := middleware.Chain(mux, middleware.RequestIDMiddleware, middleware.LogMiddleware(logger))
+	handler := middleware.Chain(mux, middleware.RequestIDMiddleware, middleware.RecoverMiddleware(logger), middleware.LogMiddleware(logger))
 
 	httpServer := &http.Server{
 		Addr:         cfg.Server.Addr,
