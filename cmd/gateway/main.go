@@ -11,6 +11,7 @@ import (
 
 	"github.com/PortableBaka/gateway/internal/config"
 	"github.com/PortableBaka/gateway/internal/gateway"
+	"github.com/PortableBaka/gateway/internal/middleware"
 )
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -37,9 +38,13 @@ func main() {
 	mux.HandleFunc("/healthz", healthHandler)
 	mux.Handle("/", router)
 
+	// Chain wraps every request — including /healthz — so the whole server
+	// gets one consistent request-ID regardless of which handler is hit.
+	handler := middleware.Chain(mux, middleware.RequestIDMiddleware)
+
 	httpServer := &http.Server{
 		Addr:         cfg.Server.Addr,
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
