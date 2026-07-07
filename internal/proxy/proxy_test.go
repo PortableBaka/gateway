@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +10,12 @@ import (
 
 	"github.com/PortableBaka/gateway/internal/config"
 )
+
+// testLogger discards output — these tests only assert HTTP behavior, not
+// what gets logged, and NewRouteHandler requires a non-nil logger.
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+}
 
 // TestNewRouteHandler_TimesOutSlowUpstream verifies the route-level timeout
 // added on top of httputil.ReverseProxy: a request to an upstream that takes
@@ -30,7 +38,7 @@ func TestNewRouteHandler_TimesOutSlowUpstream(t *testing.T) {
 		Upstreams:  []config.Upstream{{URL: slow.URL, Weight: 1}},
 	}
 
-	handler, err := NewRouteHandler(route)
+	handler, _, err := NewRouteHandler(route, testLogger())
 	if err != nil {
 		t.Fatalf("NewRouteHandler: %v", err)
 	}
@@ -67,7 +75,7 @@ func TestNewRouteHandler_FastUpstreamSucceeds(t *testing.T) {
 		Upstreams:  []config.Upstream{{URL: fast.URL, Weight: 1}},
 	}
 
-	handler, err := NewRouteHandler(route)
+	handler, _, err := NewRouteHandler(route, testLogger())
 	if err != nil {
 		t.Fatalf("NewRouteHandler: %v", err)
 	}

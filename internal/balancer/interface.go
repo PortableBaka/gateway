@@ -12,14 +12,18 @@ type Balancer interface {
 	Next() *config.Upstream
 }
 
+type HealthChecker interface {
+	IsHealthy(up *config.Upstream) bool
+}
+
 // NewBalancer builds the Balancer for a given strategy. It returns an error
 // (rather than exiting) so the caller decides how to handle a bad config.
-func NewBalancer(strategy string, upstreams []*config.Upstream) (Balancer, error) {
+func NewBalancer(strategy string, upstreams []*config.Upstream, healthChecker HealthChecker) (Balancer, error) {
 	switch strategy {
 	case config.RoundRobin:
-		return NewRoundRobin(upstreams), nil
+		return NewRoundRobin(upstreams, healthChecker), nil
 	case config.Weighted:
-		return NewWeighted(upstreams), nil
+		return NewWeighted(upstreams, healthChecker), nil
 	case config.LeastLoad:
 		TODO("least_load balancer strategy")
 	case config.Random:

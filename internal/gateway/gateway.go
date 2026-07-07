@@ -1,23 +1,28 @@
 package gateway
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/PortableBaka/gateway/internal/config"
+	"github.com/PortableBaka/gateway/internal/health"
 	"github.com/PortableBaka/gateway/internal/proxy"
 )
 
 // New builds the gateway's HTTP router from config: one proxy handler per
-// route, registered under its path prefix.
-func New(cfg *config.Config) (http.Handler, error) {
+// route, registered under its path prefix. It also returns each route's
+// health.Checker so the caller can start (and stop, via context
+// cancellation) their background probing goroutines.
+func New(cfg *config.Config, logger *slog.Logger) (http.Handler, []*health.Checker, error) {
 	mux := http.NewServeMux()
+	checkers := make([]*health.Checker, 0, len(cfg.Routes))
 
 	for i := range cfg.Routes {
 		route := &cfg.Routes[i] // pointer: the proxy holds references into this
 
-		handler, err := proxy.NewRouteHandler(route)
+		handler, checker, err := proxy.NewRouteHandler(route, logger)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		// A ServeMux pattern ending in "/" is a subtree match: "/users/" matches
@@ -25,7 +30,9 @@ func New(cfg *config.Config) (http.Handler, error) {
 		// a request to exactly "/users" (no trailing slash) still routes.
 		mux.Handle(route.PathPrefix+"/", handler)
 		mux.Handle(route.PathPrefix, handler)
+
+		checkers = append(checkers, checker)
 	}
 
-	return mux, nil
+	return mux, checkers, nil
 }

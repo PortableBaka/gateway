@@ -18,7 +18,7 @@ func mkUpstreams(urls ...string) []*config.Upstream {
 
 func TestRoundRobinDistribution(t *testing.T) {
 	ups := mkUpstreams("a", "b", "c")
-	rr := NewRoundRobin(ups)
+	rr := NewRoundRobin(ups, nil)
 
 	counts := map[string]int{}
 	for i := 0; i < 9; i++ {
@@ -33,7 +33,7 @@ func TestRoundRobinDistribution(t *testing.T) {
 
 func TestRoundRobinOrder(t *testing.T) {
 	ups := mkUpstreams("a", "b", "c")
-	rr := NewRoundRobin(ups)
+	rr := NewRoundRobin(ups, nil)
 
 	want := []string{"a", "b", "c", "a", "b", "c"}
 	for i, w := range want {
@@ -48,7 +48,7 @@ func TestWeightedDistribution(t *testing.T) {
 		{URL: "a", Weight: 1},
 		{URL: "b", Weight: 2},
 	}
-	w := NewWeighted(ups)
+	w := NewWeighted(ups, nil)
 
 	counts := map[string]int{}
 	const n = 300 // 100 full cycles of total weight 3
@@ -68,7 +68,7 @@ func TestWeightedOrder(t *testing.T) {
 		{URL: "a", Weight: 1},
 		{URL: "b", Weight: 2},
 	}
-	w := NewWeighted(ups)
+	w := NewWeighted(ups, nil)
 
 	want := []string{"b", "a", "b", "b", "a", "b"}
 	for i, exp := range want {
@@ -81,22 +81,22 @@ func TestWeightedOrder(t *testing.T) {
 func TestNewBalancer(t *testing.T) {
 	ups := mkUpstreams("a")
 
-	if _, err := NewBalancer(config.RoundRobin, ups); err != nil {
+	if _, err := NewBalancer(config.RoundRobin, ups, nil); err != nil {
 		t.Errorf("round_robin: unexpected error %v", err)
 	}
-	if _, err := NewBalancer(config.Weighted, ups); err != nil {
+	if _, err := NewBalancer(config.Weighted, ups, nil); err != nil {
 		t.Errorf("weighted: unexpected error %v", err)
 	}
-	if _, err := NewBalancer("banana", ups); err == nil {
+	if _, err := NewBalancer("banana", ups, nil); err == nil {
 		t.Error("expected error for unknown strategy, got nil")
 	}
 }
 
 func TestEmptyUpstreams(t *testing.T) {
-	if got := NewRoundRobin(nil).Next(); got != nil {
+	if got := NewRoundRobin(nil, nil).Next(); got != nil {
 		t.Errorf("round robin: got %v, want nil", got)
 	}
-	if got := NewWeighted(nil).Next(); got != nil {
+	if got := NewWeighted(nil, nil).Next(); got != nil {
 		t.Errorf("weighted: got %v, want nil", got)
 	}
 }
@@ -106,8 +106,8 @@ func TestEmptyUpstreams(t *testing.T) {
 func TestConcurrentNext(t *testing.T) {
 	ups := mkUpstreams("a", "b", "c")
 	balancers := map[string]Balancer{
-		"round_robin": NewRoundRobin(ups),
-		"weighted":    NewWeighted(ups),
+		"round_robin": NewRoundRobin(ups, nil),
+		"weighted":    NewWeighted(ups, nil),
 	}
 
 	for name, b := range balancers {

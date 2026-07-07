@@ -36,6 +36,15 @@ const (
 	DefaultRouteTimeout    = 10 * time.Second
 	DefaultWriteTimeout    = 10 * time.Second
 	DefaultShutdownTimeout = 15 * time.Second
+
+	DefaultHealthCheckPath     = "/"
+	DefaultHealthCheckInterval = 5 * time.Second
+	DefaultHealthCheckTimeout  = 2 * time.Second
+)
+
+const (
+	DefaultHealthyThreshold   int32 = 2
+	DefaultUnhealthyThreshold int32 = 2
 )
 
 type Config struct {
@@ -49,14 +58,22 @@ type Server struct {
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 }
 type Route struct {
-	PathPrefix string        `yaml:"path_prefix"`
-	Strategy   string        `yaml:"strategy"`
-	Timeout    time.Duration `yaml:"timeout"`
-	Upstreams  []Upstream    `yaml:"upstreams"`
+	PathPrefix  string        `yaml:"path_prefix"`
+	Strategy    string        `yaml:"strategy"`
+	Timeout     time.Duration `yaml:"timeout"`
+	Upstreams   []Upstream    `yaml:"upstreams"`
+	HealthCheck HealthCheck   `yaml:"health_check"`
 }
 type Upstream struct {
 	URL    string `yaml:"url"`
 	Weight int    `yaml:"weight"`
+}
+type HealthCheck struct {
+	Path               string        `yaml:"path"`
+	Interval           time.Duration `yaml:"interval"`
+	Timeout            time.Duration `yaml:"timeout"`
+	HealthyThreshold   int32         `yaml:"healthy_threshold"`
+	UnhealthyThreshold int32         `yaml:"unhealthy_threshold"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -107,6 +124,26 @@ func LoadConfig(path string) (*Config, error) {
 		if route.Timeout <= 0 {
 			route.Timeout = DefaultRouteTimeout
 		}
+
+		// Default the health-check block the same way: zero value means "not
+		// set in YAML" for every field here, so there's no way to distinguish
+		// an explicit zero from an absent one — treat both as "use the default".
+		if route.HealthCheck.Path == "" {
+			route.HealthCheck.Path = DefaultHealthCheckPath
+		}
+		if route.HealthCheck.Interval <= 0 {
+			route.HealthCheck.Interval = DefaultHealthCheckInterval
+		}
+		if route.HealthCheck.Timeout <= 0 {
+			route.HealthCheck.Timeout = DefaultHealthCheckTimeout
+		}
+		if route.HealthCheck.HealthyThreshold <= 0 {
+			route.HealthCheck.HealthyThreshold = DefaultHealthyThreshold
+		}
+		if route.HealthCheck.UnhealthyThreshold <= 0 {
+			route.HealthCheck.UnhealthyThreshold = DefaultUnhealthyThreshold
+		}
+
 		if !validStrategies[route.Strategy] {
 			return nil, fmt.Errorf("route %d (%s): unknown strategy %q", i, route.PathPrefix, route.Strategy)
 		}

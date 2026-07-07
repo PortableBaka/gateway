@@ -8,6 +8,12 @@ routes:
   - path_prefix: "/users"
     strategy: round_robin
     timeout: 3s
+    health_check:
+      path: "/"
+      interval: 2s
+      timeout: 1s
+      healthy_threshold: 2
+      unhealthy_threshold: 2
     upstreams:
       - url: "http://localhost:9001"
         weight: 1

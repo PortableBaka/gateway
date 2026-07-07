@@ -28,8 +28,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build the gateway router (one proxy handler per route).
-	router, err := gateway.New(cfg)
+	// Build the gateway router (one proxy handler per route) and collect each
+	// route's health.Checker so its background probing goroutines can be
+	// started once we have a shutdown-aware context, below.
+	router, checkers, err := gateway.New(cfg, logger)
 	if err != nil {
 		logger.Error("failed to build gateway", "error", err)
 		os.Exit(1)
@@ -56,6 +58,13 @@ func main() {
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
+	// Health-check goroutines share the server's shutdown context, so they
+	// exit on their own once ctx is cancelled below — no separate stop signal
+	// needed for them.
+	for _, checker := range checkers {
+		go checker.Run(ctx)
+	}
 
 	logger.Info("server starting", "addr", cfg.Server.Addr)
 
