@@ -47,6 +47,11 @@ const (
 	DefaultUnhealthyThreshold int32 = 2
 )
 
+const (
+	DefaultBreakerCooldown  time.Duration = 10 * time.Second
+	DefaultBreakerThreshold int32         = 5
+)
+
 type Config struct {
 	Server Server  `yaml:"server"`
 	Routes []Route `yaml:"routes"`
@@ -63,6 +68,7 @@ type Route struct {
 	Timeout     time.Duration `yaml:"timeout"`
 	Upstreams   []Upstream    `yaml:"upstreams"`
 	HealthCheck HealthCheck   `yaml:"health_check"`
+	Breaker     Breaker       `yaml:"breaker"`
 }
 type Upstream struct {
 	URL    string `yaml:"url"`
@@ -74,6 +80,10 @@ type HealthCheck struct {
 	Timeout            time.Duration `yaml:"timeout"`
 	HealthyThreshold   int32         `yaml:"healthy_threshold"`
 	UnhealthyThreshold int32         `yaml:"unhealthy_threshold"`
+}
+type Breaker struct {
+	FailureThreshold int           `yaml:"failure_threshold"`
+	Cooldown         time.Duration `yaml:"cooldown"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -142,6 +152,14 @@ func LoadConfig(path string) (*Config, error) {
 		}
 		if route.HealthCheck.UnhealthyThreshold <= 0 {
 			route.HealthCheck.UnhealthyThreshold = DefaultUnhealthyThreshold
+		}
+
+		if route.Breaker.Cooldown <= 0 {
+			route.Breaker.Cooldown = DefaultBreakerCooldown
+		}
+
+		if route.Breaker.FailureThreshold <= 0 {
+			route.Breaker.FailureThreshold = int(DefaultBreakerThreshold)
 		}
 
 		if !validStrategies[route.Strategy] {

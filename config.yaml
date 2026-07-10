@@ -14,6 +14,9 @@ routes:
       timeout: 1s
       healthy_threshold: 2
       unhealthy_threshold: 2
+    breaker:
+      failure_threshold: 5
+      cooldown: 10s
     upstreams:
       - url: "http://localhost:9001"
         weight: 1

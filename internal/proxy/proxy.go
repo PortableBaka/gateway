@@ -8,9 +8,19 @@ import (
 	"net/url"
 
 	"github.com/PortableBaka/gateway/internal/balancer"
+	"github.com/PortableBaka/gateway/internal/breaker"
 	"github.com/PortableBaka/gateway/internal/config"
 	"github.com/PortableBaka/gateway/internal/health"
 )
+
+type combinedHealth struct {
+	checker  *health.Checker
+	breakers *breaker.Registry
+}
+
+func (c combinedHealth) IsHealthy(up *config.Upstream) bool {
+	return c.checker.IsHealthy(up) && c.breakers.Allow(up)
+}
 
 // NewRouteHandler builds an http.Handler that load-balances requests for a
 // single route across its upstreams using a reverse proxy, backed by active
@@ -45,8 +55,16 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger) (http.Handler, *h
 	}
 
 	checker := health.NewChecker(ups, route.HealthCheck, logger)
+	breakers := breaker.NewRegistry(ups, route.Breaker.FailureThreshold, route.Breaker.Cooldown, logger)
+	combined := combinedHealth{
+		checker:  checker,
+		breakers: breakers,
+	}
 
-	lb, err := balancer.NewBalancer(route.Strategy, ups, checker)
+	// The balancer must see combined (health check AND breaker), not checker
+	// alone — otherwise the breaker only ever records outcomes and never
+	// actually keeps traffic away from an open-circuit upstream.
+	lb, err := balancer.NewBalancer(route.Strategy, ups, combined)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -84,6 +102,7 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger) (http.Handler, *h
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			if up, ok := hostToUpstream[r.URL.Host]; ok {
 				checker.RecordFailure(up)
+				breakers.RecordFailure(up)
 			}
 
 			// RequestIDMiddleware sets this response header before the proxy
@@ -91,6 +110,20 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger) (http.Handler, *h
 			logger.Error("proxy error", "error", err, "path", r.URL.Path, "request_id", w.Header().Get("X-Request-Id"))
 
 			w.WriteHeader(http.StatusBadGateway)
+		},
+		ModifyResponse: func(r *http.Response) error {
+			up, ok := hostToUpstream[r.Request.URL.Host]
+
+			if !ok {
+				return nil
+			}
+			if r.StatusCode >= 500 {
+				breakers.RecordFailure(up)
+			} else {
+				breakers.RecordSuccess(up)
+			}
+
+			return nil
 		},
 	}
 
