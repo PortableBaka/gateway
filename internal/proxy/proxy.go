@@ -14,6 +14,7 @@ import (
 	"github.com/PortableBaka/gateway/internal/breaker"
 	"github.com/PortableBaka/gateway/internal/config"
 	"github.com/PortableBaka/gateway/internal/health"
+	"github.com/PortableBaka/gateway/internal/metrics"
 	"github.com/PortableBaka/gateway/internal/middleware"
 )
 
@@ -66,7 +67,7 @@ func retryBackoff(attempt int, base time.Duration) time.Duration {
 // and passive health checking. It returns the route's health.Checker
 // alongside the handler so the caller can start (and, by cancelling its ctx,
 // stop) its background probing goroutines.
-func NewRouteHandler(route *config.Route, logger *slog.Logger) (http.Handler, *health.Checker, error) {
+func NewRouteHandler(route *config.Route, logger *slog.Logger, m *metrics.Metrics) (http.Handler, *health.Checker, error) {
 	// Build these up front, once, so the per-request hot path stays cheap:
 	//   1. ups            — stable *pointers* into the route's upstream slice,
 	//                       which is what the balancer hands back from Next().
@@ -93,7 +94,7 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger) (http.Handler, *h
 		hostToUpstream[parsed.Host] = up
 	}
 
-	checker := health.NewChecker(ups, route.HealthCheck, logger)
+	checker := health.NewChecker(ups, route.HealthCheck, logger, route.PathPrefix, m)
 	breakers := breaker.NewRegistry(ups, route.Breaker.FailureThreshold, route.Breaker.Cooldown, logger)
 	combined := combinedHealth{
 		checker:  checker,
@@ -200,6 +201,8 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger) (http.Handler, *h
 		// (the one we stop retrying on) gets copied to the real w.
 		rec := httptest.NewRecorder()
 
+		requestStart := time.Now()
+
 		for attempt := 1; attempt <= maxAttempts; attempt++ {
 			rec = httptest.NewRecorder()
 			proxy.ServeHTTP(rec, r)
@@ -215,6 +218,12 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger) (http.Handler, *h
 			case <-ctx.Done():
 			}
 		}
+
+		// route.PathPrefix, not r.URL.Path: the raw path is unbounded
+		// cardinality (/users/1, /users/2, ... would each become a distinct
+		// Prometheus time series), while the configured prefix is bounded to
+		// one value per route.
+		m.ObserveRequest(route.PathPrefix, r.Method, rec.Code, time.Since(requestStart))
 
 		for k, vv := range rec.Header() {
 			w.Header()[k] = vv

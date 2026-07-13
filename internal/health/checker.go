@@ -41,6 +41,14 @@ func (s *status) recordSuccess(threshold int32) (changed bool) {
 	return s.healthy.CompareAndSwap(false, true)
 }
 
+// MetricsRecorder is satisfied by *metrics.Metrics. Defined here, at the
+// point of use, rather than importing the metrics package directly — same
+// reasoning as balancer.HealthChecker: this package shouldn't need to know
+// metrics exists, just that something can record a health transition.
+type MetricsRecorder interface {
+	SetUpstreamHealthy(route, upstream string, healthy bool)
+}
+
 // Checker tracks liveness for a fixed set of upstreams via active probing
 // (Run) and accepts passive failure reports from the proxy (RecordFailure).
 // The upstream set is fixed at construction time — only the atomic fields
@@ -56,9 +64,11 @@ type Checker struct {
 	healthyThreshold   int32
 	unhealthyThreshold int32
 	logger             *slog.Logger
+	route              string
+	recorder           MetricsRecorder
 }
 
-func NewChecker(upstreams []*config.Upstream, cfg config.HealthCheck, logger *slog.Logger) *Checker {
+func NewChecker(upstreams []*config.Upstream, cfg config.HealthCheck, logger *slog.Logger, route string, recorder MetricsRecorder) *Checker {
 	statuses := make(map[*config.Upstream]*status, len(upstreams))
 	for _, up := range upstreams {
 		st := &status{}
@@ -75,6 +85,8 @@ func NewChecker(upstreams []*config.Upstream, cfg config.HealthCheck, logger *sl
 		healthyThreshold:   cfg.HealthyThreshold,
 		unhealthyThreshold: cfg.UnhealthyThreshold,
 		logger:             logger,
+		route:              route,
+		recorder:           recorder,
 	}
 }
 
@@ -98,6 +110,9 @@ func (c *Checker) RecordSuccess(up *config.Upstream) {
 	if st.recordSuccess(c.healthyThreshold) {
 		c.logger.Info("upstream marked healthy", "upstream", up.URL)
 	}
+	if c.recorder != nil {
+		c.recorder.SetUpstreamHealthy(c.route, up.URL, st.healthy.Load())
+	}
 }
 
 func (c *Checker) RecordFailure(up *config.Upstream) {
@@ -107,6 +122,9 @@ func (c *Checker) RecordFailure(up *config.Upstream) {
 	}
 	if st.recordFailure(c.unhealthyThreshold) {
 		c.logger.Warn("upstream marked unhealthy", "upstream", up.URL)
+	}
+	if c.recorder != nil {
+		c.recorder.SetUpstreamHealthy(c.route, up.URL, st.healthy.Load())
 	}
 }
 

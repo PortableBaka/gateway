@@ -11,7 +11,9 @@ import (
 
 	"github.com/PortableBaka/gateway/internal/config"
 	"github.com/PortableBaka/gateway/internal/gateway"
+	"github.com/PortableBaka/gateway/internal/metrics"
 	"github.com/PortableBaka/gateway/internal/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -28,10 +30,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	m := metrics.New()
+
 	// Build the gateway router (one proxy handler per route) and collect each
 	// route's health.Checker so its background probing goroutines can be
 	// started once we have a shutdown-aware context, below.
-	router, checkers, err := gateway.New(cfg, logger)
+	router, checkers, err := gateway.New(cfg, logger, m)
 	if err != nil {
 		logger.Error("failed to build gateway", "error", err)
 		os.Exit(1)
@@ -42,6 +46,9 @@ func main() {
 	// "/healthz" pattern wins over the catch-all "/").
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", healthHandler)
+	// promhttp.HandlerFor (not the simpler promhttp.Handler) because m uses
+	// its own *prometheus.Registry instead of the global default one.
+	mux.Handle("/metrics", promhttp.HandlerFor(m.Registry, promhttp.HandlerOpts{}))
 	mux.Handle("/", router)
 
 	rateLimiter := middleware.NewRateLimiter(cfg.Server.RateLimit.RequestsPerSecond, cfg.Server.RateLimit.Burst)
