@@ -19,7 +19,12 @@ FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 
 COPY --from=build /gateway /app/gateway
-COPY config.yaml /app/config.yaml
+# config.example.yaml, not config.yaml: the latter is gitignored local-dev
+# config that may not even exist in this build context (e.g. a fresh clone
+# or CI checkout), and baking a personal config into a shipped image would
+# be the wrong direction anyway — real deployments override this via
+# GATEWAY_CONFIG_PATH + a mounted config, same as docker-compose.yml does.
+COPY config.example.yaml /app/config.yaml
 
 EXPOSE 8081
 
