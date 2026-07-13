@@ -87,6 +87,12 @@ func TestNewBalancer(t *testing.T) {
 	if _, err := NewBalancer(config.Weighted, ups, nil); err != nil {
 		t.Errorf("weighted: unexpected error %v", err)
 	}
+	if _, err := NewBalancer(config.LeastLoad, ups, nil); err != nil {
+		t.Errorf("least_load: unexpected error %v", err)
+	}
+	if _, err := NewBalancer(config.Random, ups, nil); err != nil {
+		t.Errorf("random: unexpected error %v", err)
+	}
 	if _, err := NewBalancer("banana", ups, nil); err == nil {
 		t.Error("expected error for unknown strategy, got nil")
 	}
@@ -99,6 +105,12 @@ func TestEmptyUpstreams(t *testing.T) {
 	if got := NewWeighted(nil, nil).Next(); got != nil {
 		t.Errorf("weighted: got %v, want nil", got)
 	}
+	if got := NewLeastLoad(nil, nil).Next(); got != nil {
+		t.Errorf("least_load: got %v, want nil", got)
+	}
+	if got := NewRandom(nil, nil).Next(); got != nil {
+		t.Errorf("random: got %v, want nil", got)
+	}
 }
 
 // TestConcurrentNext is the key one: run it with -race. If a balancer's state
@@ -108,6 +120,8 @@ func TestConcurrentNext(t *testing.T) {
 	balancers := map[string]Balancer{
 		"round_robin": NewRoundRobin(ups, nil),
 		"weighted":    NewWeighted(ups, nil),
+		"least_load":  NewLeastLoad(ups, nil),
+		"random":      NewRandom(ups, nil),
 	}
 
 	for name, b := range balancers {

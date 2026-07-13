@@ -111,6 +111,11 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger, m *metrics.Metric
 		return nil, nil, err
 	}
 
+	// releaser is non-nil only for strategies that need to know when a
+	// request finishes (currently just LeastLoad, tracking in-flight
+	// counts). Type-asserted once here rather than on every request.
+	releaser, _ := lb.(balancer.Releaser)
+
 	proxy := &httputil.ReverseProxy{
 		// otelhttp.NewTransport wraps the default transport so every
 		// outbound request to an upstream carries the W3C traceparent header
@@ -153,6 +158,9 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger, m *metrics.Metric
 			if up, ok := hostToUpstream[r.URL.Host]; ok {
 				checker.RecordFailure(up)
 				breakers.RecordFailure(up)
+				if releaser != nil {
+					releaser.Done(up)
+				}
 			}
 
 			// Read the request ID from context, not the response header: w
@@ -173,6 +181,9 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger, m *metrics.Metric
 
 			if !ok {
 				return nil
+			}
+			if releaser != nil {
+				releaser.Done(up)
 			}
 			if r.StatusCode >= 500 {
 				breakers.RecordFailure(up)

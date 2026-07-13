@@ -25,21 +25,10 @@ func NewBalancer(strategy string, upstreams []*config.Upstream, healthChecker He
 	case config.Weighted:
 		return NewWeighted(upstreams, healthChecker), nil
 	case config.LeastLoad:
-		TODO("least_load balancer strategy")
+		return NewLeastLoad(upstreams, healthChecker), nil
 	case config.Random:
-		TODO("random balancer strategy")
+		return NewRandom(upstreams, healthChecker), nil
 	}
 
 	return nil, fmt.Errorf("balancer: unsupported strategy %q", strategy)
-}
-
-// TODO marks a code path as deliberately unimplemented, the same role Rust's
-// todo!() macro plays: config.validStrategies already lists least_load and
-// random as accepted values, so this documents the intent to support them
-// without pretending they work. It panics rather than returning an error
-// because reaching it means a route slipped through config validation with a
-// strategy nothing implements yet — a startup bug, not a runtime condition
-// callers should handle.
-func TODO(feature string) {
-	panic(fmt.Sprintf("balancer: %s is not implemented yet (TODO)", feature))
 }

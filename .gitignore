@@ -1,6 +1,7 @@
 dist
 .claude
 backend
+bin/
 
 # Local dev config — copy from config.example.yaml. Kept out of git since a
 # real (non-demo) deployment's config.yaml could hold real secrets, unlike
