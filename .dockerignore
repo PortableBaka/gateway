@@ -1,0 +1,5 @@
+.git
+*.md
+.claude
+/backend
+*_test.go

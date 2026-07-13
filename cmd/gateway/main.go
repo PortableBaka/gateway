@@ -25,7 +25,12 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-	cfg, err := config.LoadConfig("config.yaml")
+	configPath := "config.yaml"
+	if v := os.Getenv("GATEWAY_CONFIG_PATH"); v != "" {
+		configPath = v
+	}
+	cfg, err := config.LoadConfig(configPath)
+
 	if err != nil {
 		logger.Error("failed to load config", "error", err)
 		os.Exit(1)

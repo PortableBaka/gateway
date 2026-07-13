@@ -1,0 +1,36 @@
+server:
+  addr: ":8081"
+  read_timeout: 10s
+  write_timeout: 10s
+  shutdown_timeout: 20s
+  rate_limit:
+    requests_per_second: 10
+    burst: 20
+    cleanup_interval: 5m
+    max_idle: 10m
+  api_keys:
+    - "test-key-123"
+
+routes:
+  - path_prefix: "/users"
+    strategy: round_robin
+    timeout: 3s
+    auth:
+      required: true
+    retry:
+      max_attempts: 3
+      base_backoff: 50ms
+    health_check:
+      path: "/"
+      interval: 2s
+      timeout: 1s
+      healthy_threshold: 2
+      unhealthy_threshold: 2
+    breaker:
+      failure_threshold: 5
+      cooldown: 10s
+    upstreams:
+      - url: "http://localhost:9001"
+        weight: 1
+      - url: "http://localhost:9002"
+        weight: 1
