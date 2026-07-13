@@ -7,6 +7,7 @@ import (
 	"github.com/PortableBaka/gateway/internal/config"
 	"github.com/PortableBaka/gateway/internal/health"
 	"github.com/PortableBaka/gateway/internal/metrics"
+	"github.com/PortableBaka/gateway/internal/middleware"
 	"github.com/PortableBaka/gateway/internal/proxy"
 )
 
@@ -18,10 +19,14 @@ func New(cfg *config.Config, logger *slog.Logger, m *metrics.Metrics) (http.Hand
 	mux := http.NewServeMux()
 	checkers := make([]*health.Checker, 0, len(cfg.Routes))
 
+	// Built once, shared by every route: authMw is a pure function of the
+	// gateway-wide key list, not anything route-specific.
+	authMw := middleware.AuthMiddleware(cfg.Server.APIKeys, logger)
+
 	for i := range cfg.Routes {
 		route := &cfg.Routes[i] // pointer: the proxy holds references into this
 
-		handler, checker, err := proxy.NewRouteHandler(route, logger, m)
+		handler, checker, err := proxy.NewRouteHandler(route, logger, m, authMw)
 		if err != nil {
 			return nil, nil, err
 		}

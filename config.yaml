@@ -8,11 +8,15 @@ server:
     burst: 20
     cleanup_interval: 5m
     max_idle: 10m
+  api_keys:
+    - "test-key-123"
 
 routes:
   - path_prefix: "/users"
     strategy: round_robin
     timeout: 3s
+    auth:
+      required: true
     retry:
       max_attempts: 3
       base_backoff: 50ms

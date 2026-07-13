@@ -74,6 +74,8 @@ type Server struct {
 	WriteTimeout    time.Duration `yaml:"write_timeout"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 	RateLimit       RateLimit     `yaml:"rate_limit"`
+	APIKeys         []string      `yaml:"api_keys"`
+	TLS             TLS           `yaml:"tls"`
 }
 type Route struct {
 	PathPrefix  string        `yaml:"path_prefix"`
@@ -83,6 +85,7 @@ type Route struct {
 	HealthCheck HealthCheck   `yaml:"health_check"`
 	Breaker     Breaker       `yaml:"breaker"`
 	Retry       Retry         `yaml:"retry"`
+	Auth        Auth          `yaml:"auth"`
 }
 type Upstream struct {
 	URL    string `yaml:"url"`
@@ -108,6 +111,14 @@ type RateLimit struct {
 	Burst             int           `yaml:"burst"`
 	CleanupInterval   time.Duration `yaml:"cleanup_interval"`
 	MaxIdle           time.Duration `yaml:"max_idle"`
+}
+
+type Auth struct {
+	Required bool `yaml:"required"`
+}
+type TLS struct {
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -149,6 +160,11 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.Server.RateLimit.MaxIdle <= 0 {
 		cfg.Server.RateLimit.MaxIdle = DefaultMaxIdle
 	}
+
+	if (cfg.Server.TLS.CertFile == "") != (cfg.Server.TLS.KeyFile == "") {
+		return nil, fmt.Errorf("server.tls: cert_file and key_file must both be set, or both left empty")
+	}
+
 	if len(cfg.Routes) == 0 {
 		return nil, ErrNoRoutes
 	}

@@ -67,7 +67,7 @@ func retryBackoff(attempt int, base time.Duration) time.Duration {
 // and passive health checking. It returns the route's health.Checker
 // alongside the handler so the caller can start (and, by cancelling its ctx,
 // stop) its background probing goroutines.
-func NewRouteHandler(route *config.Route, logger *slog.Logger, m *metrics.Metrics) (http.Handler, *health.Checker, error) {
+func NewRouteHandler(route *config.Route, logger *slog.Logger, m *metrics.Metrics, authMw middleware.Middleware) (http.Handler, *health.Checker, error) {
 	// Build these up front, once, so the per-request hot path stays cheap:
 	//   1. ups            — stable *pointers* into the route's upstream slice,
 	//                       which is what the balancer hands back from Next().
@@ -232,5 +232,10 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger, m *metrics.Metric
 		w.Write(rec.Body.Bytes())
 	})
 
-	return handler, checker, nil
+	final := http.Handler(handler)
+	if route.Auth.Required {
+		final = middleware.Chain(final, authMw)
+	}
+
+	return final, checker, nil
 }

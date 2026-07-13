@@ -39,7 +39,7 @@ func TestNewRouteHandler_TimesOutSlowUpstream(t *testing.T) {
 		Upstreams:  []config.Upstream{{URL: slow.URL, Weight: 1}},
 	}
 
-	handler, _, err := NewRouteHandler(route, testLogger(), metrics.New())
+	handler, _, err := NewRouteHandler(route, testLogger(), metrics.New(), nil)
 	if err != nil {
 		t.Fatalf("NewRouteHandler: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestNewRouteHandler_FastUpstreamSucceeds(t *testing.T) {
 		Upstreams:  []config.Upstream{{URL: fast.URL, Weight: 1}},
 	}
 
-	handler, _, err := NewRouteHandler(route, testLogger(), metrics.New())
+	handler, _, err := NewRouteHandler(route, testLogger(), metrics.New(), nil)
 	if err != nil {
 		t.Fatalf("NewRouteHandler: %v", err)
 	}
