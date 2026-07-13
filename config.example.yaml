@@ -10,6 +10,10 @@ server:
     max_idle: 10m
   api_keys:
     - "test-key-123"
+  # debug_addr: ":6060"        # opt-in: serves net/http/pprof on its own port
+  # tracing:                   # opt-in: OpenTelemetry tracing
+  #   enabled: true
+  #   endpoint: "stdout"       # or an OTLP endpoint, e.g. Jaeger's "localhost:4318"
 
 routes:
   - path_prefix: "/users"

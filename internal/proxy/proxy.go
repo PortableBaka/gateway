@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/PortableBaka/gateway/internal/balancer"
 	"github.com/PortableBaka/gateway/internal/breaker"
 	"github.com/PortableBaka/gateway/internal/config"
@@ -110,6 +112,14 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger, m *metrics.Metric
 	}
 
 	proxy := &httputil.ReverseProxy{
+		// otelhttp.NewTransport wraps the default transport so every
+		// outbound request to an upstream carries the W3C traceparent header
+		// derived from the incoming request's span (propagating the trace
+		// across the gateway -> upstream hop) and gets its own child span
+		// timing that specific call. Safe to leave on unconditionally: with
+		// no TracerProvider installed (tracing disabled), otel falls back to
+		// its global no-op provider, so this becomes a cheap pass-through.
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
 		// Rewrite runs once per incoming request. This is where we pick the
 		// upstream (load balancing happens here) and point the outbound request
 		// at it. pr.In is the request we received; pr.Out is the one being sent.

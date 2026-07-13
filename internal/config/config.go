@@ -64,6 +64,11 @@ const (
 	DefaultMaxIdle           time.Duration = 10 * time.Minute
 )
 
+const (
+	DefaultTracingServiceName = "gateway"
+	DefaultTracingEndpoint    = "localhost:4318"
+)
+
 type Config struct {
 	Server Server  `yaml:"server"`
 	Routes []Route `yaml:"routes"`
@@ -76,6 +81,18 @@ type Server struct {
 	RateLimit       RateLimit     `yaml:"rate_limit"`
 	APIKeys         []string      `yaml:"api_keys"`
 	TLS             TLS           `yaml:"tls"`
+	// DebugAddr, if set, starts a second, separate net/http/pprof listener.
+	// Opt-in (no default) deliberately — a profiling surface shouldn't be
+	// always-on just because the gateway started.
+	DebugAddr string  `yaml:"debug_addr"`
+	Tracing   Tracing `yaml:"tracing"`
+}
+type Tracing struct {
+	// Enabled is opt-in for the same reason DebugAddr has no default: a
+	// demo/dev deployment shouldn't pay tracing overhead unless asked.
+	Enabled     bool   `yaml:"enabled"`
+	Endpoint    string `yaml:"endpoint"`
+	ServiceName string `yaml:"service_name"`
 }
 type Route struct {
 	PathPrefix  string        `yaml:"path_prefix"`
@@ -163,6 +180,15 @@ func LoadConfig(path string) (*Config, error) {
 
 	if (cfg.Server.TLS.CertFile == "") != (cfg.Server.TLS.KeyFile == "") {
 		return nil, fmt.Errorf("server.tls: cert_file and key_file must both be set, or both left empty")
+	}
+
+	if cfg.Server.Tracing.Enabled {
+		if cfg.Server.Tracing.ServiceName == "" {
+			cfg.Server.Tracing.ServiceName = DefaultTracingServiceName
+		}
+		if cfg.Server.Tracing.Endpoint == "" {
+			cfg.Server.Tracing.Endpoint = DefaultTracingEndpoint
+		}
 	}
 
 	if len(cfg.Routes) == 0 {

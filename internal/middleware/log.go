@@ -4,6 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 // HttpWriterWithStatus wraps an http.ResponseWriter to capture the status
@@ -36,13 +38,23 @@ func LogMiddleware(logger *slog.Logger) Middleware {
 
 			next.ServeHTTP(wrappedWriter, r)
 
-			logger.Info("request",
+			args := []any{
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", wrappedWriter.status,
 				"duration", time.Since(start),
 				"request_id", GetRequestId(r.Context()),
-			)
+			}
+
+			// Only when tracing is actually wired up (SpanContext is valid) —
+			// otherwise this would log an all-zero trace ID on every request,
+			// which is noise, not signal. This is what lets someone jump from
+			// a log line straight to the matching distributed trace.
+			if sc := trace.SpanContextFromContext(r.Context()); sc.IsValid() {
+				args = append(args, "trace_id", sc.TraceID().String())
+			}
+
+			logger.Info("request", args...)
 		})
 	}
 }
