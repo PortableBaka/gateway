@@ -8,6 +8,9 @@ routes:
   - path_prefix: "/users"
     strategy: round_robin
     timeout: 3s
+    retry:
+      max_attempts: 3
+      base_backoff: 50ms
     health_check:
       path: "/"
       interval: 2s

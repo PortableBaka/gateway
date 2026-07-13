@@ -2,15 +2,19 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"time"
 
 	"github.com/PortableBaka/gateway/internal/balancer"
 	"github.com/PortableBaka/gateway/internal/breaker"
 	"github.com/PortableBaka/gateway/internal/config"
 	"github.com/PortableBaka/gateway/internal/health"
+	"github.com/PortableBaka/gateway/internal/middleware"
 )
 
 type combinedHealth struct {
@@ -20,6 +24,41 @@ type combinedHealth struct {
 
 func (c combinedHealth) IsHealthy(up *config.Upstream) bool {
 	return c.checker.IsHealthy(up) && c.breakers.Allow(up)
+}
+
+// errorResponse is the JSON body written for any request that never gets a
+// real upstream response — either httputil.ReverseProxy's ErrorHandler fired
+// (transport failure), or Rewrite couldn't route it at all (no healthy
+// upstream), which also ends up in ErrorHandler by way of a transport error.
+type errorResponse struct {
+	Error     string `json:"error"`
+	RequestID string `json:"request_id"`
+}
+
+// isIdempotent reports whether method is safe to retry against a different
+// upstream: no side effects, so sending it more than once can't corrupt
+// anything. PUT/DELETE are technically idempotent too, but not "safe" —
+// retrying them can still double up on logging/metrics/etc. — so they're
+// deliberately excluded here rather than auto-retried.
+func isIdempotent(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	return false
+}
+
+// retryBackoff returns the wait before retry attempt N (1-indexed), doubling
+// each time and capped so a high MaxAttempts can't make a single request
+// wait unreasonably long between tries.
+func retryBackoff(attempt int, base time.Duration) time.Duration {
+	const maxBackoff = 500 * time.Millisecond
+
+	d := base * time.Duration(1<<(attempt-1))
+	if d > maxBackoff {
+		return maxBackoff
+	}
+	return d
 }
 
 // NewRouteHandler builds an http.Handler that load-balances requests for a
@@ -105,11 +144,18 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger) (http.Handler, *h
 				breakers.RecordFailure(up)
 			}
 
-			// RequestIDMiddleware sets this response header before the proxy
-			// ever runs, so it's already there to read back for correlation.
-			logger.Error("proxy error", "error", err, "path", r.URL.Path, "request_id", w.Header().Get("X-Request-Id"))
+			// Read the request ID from context, not the response header: w
+			// here may be a per-attempt httptest.ResponseRecorder (see the
+			// retry loop below), which never had RequestIDMiddleware's
+			// header set on it — only the real, outer ResponseWriter did.
+			// The request's context, unlike the header, survives unchanged
+			// across every retry attempt.
+			requestID := middleware.GetRequestId(r.Context())
+			logger.Error("proxy error", "error", err, "path", r.URL.Path, "request_id", requestID)
 
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadGateway)
+			json.NewEncoder(w).Encode(errorResponse{Error: "upstream_unavailable", RequestID: requestID})
 		},
 		ModifyResponse: func(r *http.Response) error {
 			up, ok := hostToUpstream[r.Request.URL.Host]
@@ -127,12 +173,54 @@ func NewRouteHandler(route *config.Route, logger *slog.Logger) (http.Handler, *h
 		},
 	}
 
+	// Defensive defaults, same reasoning as the URL re-parse above: LoadConfig
+	// already defaults these, but a Route built directly (e.g. in a test)
+	// bypasses that, and a zero MaxAttempts would make the loop below never
+	// run at all.
+	maxAttempts := route.Retry.MaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	baseBackoff := route.Retry.BaseBackoff
+	if baseBackoff <= 0 {
+		baseBackoff = config.DefaultRetryBaseBackoff
+	}
+
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), route.Timeout)
-
 		defer cancel()
+		r = r.WithContext(ctx)
 
-		proxy.ServeHTTP(w, r.WithContext(ctx))
+		retryable := isIdempotent(r.Method)
+
+		// proxy.ServeHTTP writes straight to whatever ResponseWriter it's
+		// given. If we let it write to the real w and then decided to retry,
+		// we couldn't take back headers/body already sent to the client — so
+		// each attempt writes into its own buffer, and only the last one
+		// (the one we stop retrying on) gets copied to the real w.
+		rec := httptest.NewRecorder()
+
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			rec = httptest.NewRecorder()
+			proxy.ServeHTTP(rec, r)
+
+			if !retryable || rec.Code < 500 || attempt == maxAttempts {
+				break
+			}
+
+			logger.Warn("retrying request", "attempt", attempt, "method", r.Method, "path", r.URL.Path, "status", rec.Code)
+
+			select {
+			case <-time.After(retryBackoff(attempt, baseBackoff)):
+			case <-ctx.Done():
+			}
+		}
+
+		for k, vv := range rec.Header() {
+			w.Header()[k] = vv
+		}
+		w.WriteHeader(rec.Code)
+		w.Write(rec.Body.Bytes())
 	})
 
 	return handler, checker, nil

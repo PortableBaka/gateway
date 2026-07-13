@@ -52,6 +52,11 @@ const (
 	DefaultBreakerThreshold int32         = 5
 )
 
+const (
+	DefaultRetryMaxAttempts int           = 3
+	DefaultRetryBaseBackoff time.Duration = 50 * time.Millisecond
+)
+
 type Config struct {
 	Server Server  `yaml:"server"`
 	Routes []Route `yaml:"routes"`
@@ -69,6 +74,7 @@ type Route struct {
 	Upstreams   []Upstream    `yaml:"upstreams"`
 	HealthCheck HealthCheck   `yaml:"health_check"`
 	Breaker     Breaker       `yaml:"breaker"`
+	Retry       Retry         `yaml:"retry"`
 }
 type Upstream struct {
 	URL    string `yaml:"url"`
@@ -84,6 +90,10 @@ type HealthCheck struct {
 type Breaker struct {
 	FailureThreshold int           `yaml:"failure_threshold"`
 	Cooldown         time.Duration `yaml:"cooldown"`
+}
+type Retry struct {
+	MaxAttempts int           `yaml:"max_attempts"`
+	BaseBackoff time.Duration `yaml:"base_backoff"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -160,6 +170,13 @@ func LoadConfig(path string) (*Config, error) {
 
 		if route.Breaker.FailureThreshold <= 0 {
 			route.Breaker.FailureThreshold = int(DefaultBreakerThreshold)
+		}
+
+		if route.Retry.MaxAttempts <= 0 {
+			route.Retry.MaxAttempts = DefaultRetryMaxAttempts
+		}
+		if route.Retry.BaseBackoff <= 0 {
+			route.Retry.BaseBackoff = DefaultRetryBaseBackoff
 		}
 
 		if !validStrategies[route.Strategy] {
