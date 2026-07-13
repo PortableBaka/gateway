@@ -44,11 +44,16 @@ func main() {
 	mux.HandleFunc("/healthz", healthHandler)
 	mux.Handle("/", router)
 
+	rateLimiter := middleware.NewRateLimiter(cfg.Server.RateLimit.RequestsPerSecond, cfg.Server.RateLimit.Burst)
+
 	// Chain wraps every request — including /healthz — so the whole server
 	// gets one consistent request-ID and one log line regardless of which
 	// handler is hit. RequestIDMiddleware runs first so the ID it stashes in
 	// the request context is there by the time LogMiddleware reads it back.
-	handler := middleware.Chain(mux, middleware.RequestIDMiddleware, middleware.RecoverMiddleware(logger), middleware.LogMiddleware(logger))
+	// RateLimitMiddleware is innermost (right before mux) but still inside
+	// LogMiddleware, so a rejected (429) request still gets logged exactly
+	// like any other.
+	handler := middleware.Chain(mux, middleware.RequestIDMiddleware, middleware.RecoverMiddleware(logger), middleware.LogMiddleware(logger), middleware.RateLimitMiddleware(rateLimiter, logger))
 
 	httpServer := &http.Server{
 		Addr:         cfg.Server.Addr,
@@ -65,6 +70,7 @@ func main() {
 	for _, checker := range checkers {
 		go checker.Run(ctx)
 	}
+	go rateLimiter.Run(ctx, cfg.Server.RateLimit.CleanupInterval, cfg.Server.RateLimit.MaxIdle)
 
 	logger.Info("server starting", "addr", cfg.Server.Addr)
 

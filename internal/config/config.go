@@ -57,6 +57,13 @@ const (
 	DefaultRetryBaseBackoff time.Duration = 50 * time.Millisecond
 )
 
+const (
+	DefaultRequestsPerSecond float64       = 10
+	DefaultBurst             int           = 20
+	DefaultCleanupInterval   time.Duration = 5 * time.Minute
+	DefaultMaxIdle           time.Duration = 10 * time.Minute
+)
+
 type Config struct {
 	Server Server  `yaml:"server"`
 	Routes []Route `yaml:"routes"`
@@ -66,6 +73,7 @@ type Server struct {
 	ReadTimeout     time.Duration `yaml:"read_timeout"`
 	WriteTimeout    time.Duration `yaml:"write_timeout"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
+	RateLimit       RateLimit     `yaml:"rate_limit"`
 }
 type Route struct {
 	PathPrefix  string        `yaml:"path_prefix"`
@@ -95,6 +103,12 @@ type Retry struct {
 	MaxAttempts int           `yaml:"max_attempts"`
 	BaseBackoff time.Duration `yaml:"base_backoff"`
 }
+type RateLimit struct {
+	RequestsPerSecond float64       `yaml:"requests_per_second"`
+	Burst             int           `yaml:"burst"`
+	CleanupInterval   time.Duration `yaml:"cleanup_interval"`
+	MaxIdle           time.Duration `yaml:"max_idle"`
+}
 
 func LoadConfig(path string) (*Config, error) {
 	var cfg Config
@@ -122,6 +136,18 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.Server.ShutdownTimeout == 0 {
 		cfg.Server.ShutdownTimeout = DefaultShutdownTimeout
+	}
+	if cfg.Server.RateLimit.RequestsPerSecond <= 0 {
+		cfg.Server.RateLimit.RequestsPerSecond = DefaultRequestsPerSecond
+	}
+	if cfg.Server.RateLimit.Burst <= 0 {
+		cfg.Server.RateLimit.Burst = DefaultBurst
+	}
+	if cfg.Server.RateLimit.CleanupInterval <= 0 {
+		cfg.Server.RateLimit.CleanupInterval = DefaultCleanupInterval
+	}
+	if cfg.Server.RateLimit.MaxIdle <= 0 {
+		cfg.Server.RateLimit.MaxIdle = DefaultMaxIdle
 	}
 	if len(cfg.Routes) == 0 {
 		return nil, ErrNoRoutes

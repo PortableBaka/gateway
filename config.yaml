@@ -3,6 +3,11 @@ server:
   read_timeout: 10s
   write_timeout: 10s
   shutdown_timeout: 20s
+  rate_limit:
+    requests_per_second: 10
+    burst: 20
+    cleanup_interval: 5m
+    max_idle: 10m
 
 routes:
   - path_prefix: "/users"
